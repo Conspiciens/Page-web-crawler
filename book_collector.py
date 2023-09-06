@@ -22,6 +22,7 @@ def request_url(url):
     '''
      Request the given url and retrieve any urls + books links 
     '''
+    book_urls = []
     urls.append(url)
 
     # Iterate through the urls as they're appended 
@@ -49,17 +50,58 @@ def request_url(url):
             if section != None: 
                 section = section.get_text().split(' ', 1)[1]
                 print(section)
-                selected_books[section]= []
+                selected_books[section] = [] 
             else: 
                 selected_books[section] = []
 
             # Put all selected books into a dictionary to be stored for firebase
             for book in book_html.find_all('a'):
-                if book['href'] not in selected_books[section] and book['href'] != "#": 
-                    selected_books[section].append(book['href']) 
+                if book['href'] not in book_urls and book['href'] != "#": 
+                    book_info = get_book_info(book['href'])
+                    selected_books[section].append(book_info) 
+                    book_urls.append(book['href'])
+
+            print(selected_books)
 
         else: 
             print("URL is unable to process: " + url)
+
+def get_book_info(book_url): 
+    book_data = {}
+
+    response = requests.get(book_url, headers = headers)
+    if response.status_code == 200: 
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        price = soup.find('span', itemprop="price") 
+        name = soup.find('h1', itemprop="name")
+        description = soup.find('div', itemprop="description")
+        stock = soup.find('span', {'class': 'js-product-availability'})
+        image = soup.find('img', {'class': 'js-qv-product-cover img-fluid'})
+
+        if price != None: 
+            price = price.get_text()
+            book_data["price"] = price
+        if name != None:  
+            name = name.get_text() 
+            book_data["name"] = name  
+        if description != None: 
+            description = description.get_text()
+            book_data["description"] = description 
+        if stock != None:
+            stock = stock.get_text()
+            if "\n\ue5ca\n" in stock: 
+                stock = stock.replace("\n\ue5ca\n", "").strip()
+            else: 
+                stock = stock.replace("\ue14b\n", "").strip()
+            book_data["stock"] = stock 
+        if image != None: 
+            book_data["image"] = image["src"]
+        
+        book_data["link"] = book_url
+
+    return book_data
+        
         
 def init_firebase(): 
     ''' 
@@ -69,8 +111,7 @@ def init_firebase():
     for key, value in selected_books.items(): 
         for book in value: 
             if key != None: 
-                link = {"link": book}
-                db.collection(key).document().set(link)
+                db.collection(key).document().set(book)
 
 
 def main(): 
